@@ -341,6 +341,26 @@
       </div>
     </section>
 
+    <!-- ── Script Editor ────────────────────────────────────────────────── -->
+    <section class="card" id="card-script">
+      <h2>Skript-Editor</h2>
+
+      <div class="script-toolbar">
+        <div class="mode-toggle" role="group" aria-label="Editor-Modus">
+          <button id="btn-mode-json" class="btn btn-xs btn-secondary active" title="JSON-Skriptobjekt einfügen">JSON</button>
+          <button id="btn-mode-text" class="btn btn-xs btn-secondary"        title="Eine I²C-Zeile pro Zeile: Adresse Register Daten…">Text</button>
+        </div>
+        <button id="btn-script-run"   class="btn btn-primary" disabled>▶ Ausführen</button>
+        <button id="btn-script-clear" class="btn btn-ghost btn-xs">Leeren</button>
+      </div>
+
+      <textarea id="script-editor" class="script-editor" spellcheck="false"
+        placeholder='JSON-Modus: { "name": "…", "address": "0x53", "commands": [ { "op": "write", "reg": "0x2D", "data": ["0x08"] } ] }'
+      ></textarea>
+
+      <div id="script-hint" class="script-hint text-dim"></div>
+    </section>
+
     <!-- ── Log ──────────────────────────────────────────────────────────── -->
     <section class="card" id="card-log">
       <div class="log-header">

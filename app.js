@@ -597,6 +597,180 @@ $('btn-writeread').addEventListener('click', () =>
 // ─── Log controls ─────────────────────────────────────────────────────────────
 $('btn-clear-log').addEventListener('click', () => term.clear());
 
+// ─── Script Editor ────────────────────────────────────────────────────────────
+
+function initScriptEditor() {
+  const editor   = $('script-editor');
+  const btnRun   = $('btn-script-run');
+  const btnClear = $('btn-script-clear');
+  const btnJson  = $('btn-mode-json');
+  const btnText  = $('btn-mode-text');
+  const hint     = $('script-hint');
+
+  let mode = 'json'; // 'json' | 'text'
+
+  const TEXT_PLACEHOLDER =
+    'Text-Modus: eine I²C-Zeile pro Zeile\n' +
+    '  Adresse  [Bytes …]   # Kommentar\n\n' +
+    '  0x53 0x2D 0x00   # POWER_CTL: Standby\n' +
+    '  0x53 0x31 0x08   # DATA_FORMAT: Full Res\n' +
+    '  0x53 0x2D 0x08   # POWER_CTL: Measure';
+  const JSON_PLACEHOLDER =
+    '{ "name": "…", "address": "0x53",\n' +
+    '  "commands": [\n' +
+    '    { "op": "write", "reg": "0x2D", "data": ["0x00"], "comment": "Standby" },\n' +
+    '    { "op": "write", "reg": "0x2D", "data": ["0x08"], "comment": "Measure"  }\n' +
+    '  ]\n}';
+
+  function setMode(m) {
+    mode = m;
+    btnJson.classList.toggle('active', m === 'json');
+    btnText.classList.toggle('active', m === 'text');
+    editor.placeholder = m === 'json' ? JSON_PLACEHOLDER : TEXT_PLACEHOLDER;
+    updateHint();
+  }
+
+  function updateHint() {
+    hint.textContent = mode === 'json'
+      ? 'JSON: { "name", "address", "commands": [ { "op": "write"|"read"|"poll_until", … } ] }'
+      : 'Text: eine Zeile = Adresse + Datenbytes (hex). Zeilen mit # werden ignoriert.';
+  }
+
+  btnJson.addEventListener('click', () => setMode('json'));
+  btnText.addEventListener('click', () => setMode('text'));
+  btnClear.addEventListener('click', () => { editor.value = ''; });
+
+  // Enable/disable run button based on content
+  editor.addEventListener('input', () => {
+    btnRun.disabled = !drv.connected || editor.value.trim() === '';
+  });
+  drv.addEventListener('connected',    () => { btnRun.disabled = editor.value.trim() === ''; });
+  drv.addEventListener('disconnected', () => { btnRun.disabled = true; });
+
+  btnRun.addEventListener('click', () =>
+    withBusy('btn-script-run', async () => {
+      const src = editor.value.trim();
+      if (!src) return;
+      if (mode === 'json') {
+        await runEditorJsonScript(src);
+      } else {
+        await runEditorTextScript(src);
+      }
+    })
+  );
+
+  // ── JSON execution ─────────────────────────────────────────────────────────
+  async function runEditorJsonScript(src) {
+    let script;
+    try {
+      script = JSON.parse(src);
+    } catch (e) {
+      log('ERROR', `JSON-Parsefehler: ${e.message}`);
+      return;
+    }
+    if (!script.commands || !Array.isArray(script.commands)) {
+      log('ERROR', 'JSON muss ein Objekt mit "commands"-Array sein.');
+      return;
+    }
+
+    const devAddr = script.address
+      ? parseInt(script.address, 16)
+      : NaN;
+    if (isNaN(devAddr) || devAddr < 0 || devAddr > 127) {
+      log('ERROR', 'JSON: "address" fehlt oder ist ungültig (erwartet z.B. "0x53").');
+      return;
+    }
+
+    const name = script.name ?? 'Skript';
+    log('INFO', `▶ Skript starten: ${name}`);
+
+    for (const cmd of script.commands) {
+      const comment = cmd.comment ? ` — ${cmd.comment}` : '';
+      if (cmd.op === 'delay') {
+        await new Promise(r => setTimeout(r, cmd.ms ?? 10));
+        log('INFO', `  ⏱ ${cmd.ms} ms Pause${comment}`);
+        continue;
+      }
+      const regByte = parseInt(cmd.reg, 16);
+      if (cmd.op === 'write') {
+        const bytes = new Uint8Array((cmd.data ?? []).map(b => parseInt(b, 16)));
+        await drv.regWrite(devAddr, regByte, bytes);
+        log('TX', `  ${cmd.reg} ← ${(cmd.data ?? []).join(' ')}${comment}`);
+      } else if (cmd.op === 'read') {
+        const fmt    = cmd.format ?? 'u8';
+        const nBytes = fmtByteCount(fmt);
+        const data   = await drv.regRead(devAddr, regByte, nBytes);
+        const numVal = decodeRegValue(data, fmt);
+        const hexStr = fmtHex(data);
+        const disp   = nBytes > 1 ? `${numVal} (${hexStr})` : hexStr;
+        log('RX', `  ${cmd.reg} [${fmt}] = ${disp}${comment}`);
+      } else if (cmd.op === 'poll_until') {
+        const fmt      = cmd.format    ?? 'u8';
+        const maxTries = cmd.max_tries ?? 10;
+        const delayMs  = cmd.delay_ms  ?? 100;
+        const expected = typeof cmd.expected === 'number'
+          ? cmd.expected
+          : /^0x/i.test(String(cmd.expected))
+            ? parseInt(cmd.expected, 16)
+            : parseInt(cmd.expected, 10);
+        let matched = false;
+        for (let attempt = 1; attempt <= maxTries; attempt++) {
+          const nBytes = fmtByteCount(fmt);
+          const data   = await drv.regRead(devAddr, regByte, nBytes);
+          const numVal = decodeRegValue(data, fmt);
+          const hexStr = fmtHex(data);
+          const disp   = nBytes > 1 ? `${numVal} (${hexStr})` : hexStr;
+          const ok     = numVal === expected;
+          const expHex = '0x' + expected.toString(16).toUpperCase().padStart(2, '0');
+          log(ok ? 'RX' : 'WARN',
+            `  ${cmd.reg} [${fmt}] = ${disp}` +
+            (maxTries > 1 ? ` (${attempt}/${maxTries})` : '') +
+            (ok ? ` ✓${comment}` : ` – erwartet ${expHex}${comment}`));
+          if (ok) { matched = true; break; }
+          if (attempt < maxTries && delayMs > 0)
+            await new Promise(r => setTimeout(r, delayMs));
+        }
+        if (!matched) {
+          const expHex = '0x' + expected.toString(16).toUpperCase().padStart(2, '0');
+          throw new Error(`Register ${cmd.reg} hat nach ${maxTries} Versuch(en) nicht ${expHex} angenommen`);
+        }
+      } else {
+        log('WARN', `  Unbekannte Operation: "${cmd.op}"${comment}`);
+      }
+    }
+    log('INFO', `✓ Skript abgeschlossen: ${name}`);
+  }
+
+  // ── Text execution ─────────────────────────────────────────────────────────
+  async function runEditorTextScript(src) {
+    const lines = src.split('\n')
+      .map(l => l.replace(/#.*$/, '').trim())   // strip comments
+      .filter(Boolean);
+
+    if (!lines.length) { log('WARN', 'Textskript ist leer.'); return; }
+
+    log('INFO', `▶ Textskript ausführen (${lines.length} Zeile(n))`);
+    for (const line of lines) {
+      const tokens = line.trim().split(/\s+/);
+      if (tokens.length < 2) {
+        log('WARN', `  Überspringe ungültige Zeile: "${line}"`);
+        continue;
+      }
+      const devAddr = parseInt(tokens[0], 16);
+      if (isNaN(devAddr) || devAddr < 0 || devAddr > 127) {
+        log('WARN', `  Ungültige Adresse "${tokens[0]}" – Zeile übersprungen`);
+        continue;
+      }
+      const bytes = new Uint8Array(tokens.slice(1).map(t => parseInt(t, 16)));
+      await drv.write(devAddr, bytes);
+      log('TX', `  ${tokens[0]} ← ${tokens.slice(1).join(' ')}`);
+    }
+    log('INFO', '✓ Textskript abgeschlossen');
+  }
+
+  setMode('json');
+}
+
 // ─── Device Explorer ──────────────────────────────────────────────────────────
 
 // Load all device JSON files via Vite glob (relative to app.js)
@@ -1125,6 +1299,9 @@ function init() {
 
   // Build scan table
   buildScanTable();
+
+  // Script Editor
+  initScriptEditor();
 
   // Device Explorer
   initDeviceExplorer();

@@ -161,6 +161,7 @@ main {
     "scan     scan"
     "devices  devices"
     "ops      ops"
+    "script   script"
     "log      log";
   gap: 16px;
 }
@@ -189,6 +190,7 @@ main {
 #card-scan     { grid-area: scan; }
 #card-devices  { grid-area: devices; }
 #card-ops      { grid-area: ops; }
+#card-script   { grid-area: script; }
 #card-log      { grid-area: log; }
 
 /* ─── Status grid ─────────────────────────────────────────────────────────── */
@@ -961,4 +963,56 @@ input[type="number"].inp { max-width: 100px; }
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
+}
+
+/* ─── Script Editor ───────────────────────────────────────────────────────── */
+.script-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.mode-toggle .btn {
+  border-radius: 0;
+  border: none;
+  margin: 0;
+  opacity: .55;
+}
+.mode-toggle .btn.active {
+  background: var(--accent);
+  color: var(--bg);
+  opacity: 1;
+}
+
+.script-editor {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  line-height: 1.5;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .2s;
+  box-sizing: border-box;
+}
+.script-editor:focus { border-color: var(--accent-dim); }
+.script-editor::placeholder { color: #444; }
+
+.script-hint {
+  margin-top: 8px;
+  font-size: .8rem;
+  min-height: 1.2em;
 }
