@@ -56,11 +56,13 @@ jobs:
           BASE_PATH: /i2c-driver-webapp/
 
       # ── Playwright screenshot ──────────────────────────────────────────────
-      - name: Install Playwright + Chromium system deps
+      - name: Install Playwright Chromium (browsers + OS deps)
         run: npx playwright install --with-deps chromium
 
       - name: Start Vite preview server (background)
         run: npx vite preview --port 4173 &
+        env:
+          BASE_PATH: /i2c-driver-webapp/
 
       - name: Wait for preview server to be ready
         run: |
@@ -70,14 +72,8 @@ jobs:
             sleep 1
           done
 
-      - name: Take full-page app screenshot
-        run: |
-          npx playwright screenshot \
-            --browser=chromium \
-            --viewport-size="1280, 900" \
-            --full-page \
-            http://localhost:4173/i2c-driver-webapp/ \
-            app-screenshot.png
+      - name: Take app screenshot (networkidle + 2 s settle)
+        run: node screenshot.mjs app-screenshot.png
 
       # ── GitHub Release ─────────────────────────────────────────────────────
       - name: Create / update GitHub Release
