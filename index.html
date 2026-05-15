@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>I²CDriver – Web Control</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Browser compatibility warning -->
+  <div id="browser-warning">
+    ⚠ Web Serial API wird von diesem Browser nicht unterstützt.
+    Bitte <strong>Google Chrome</strong> oder <strong>Microsoft Edge</strong> (Version ≥ 89) verwenden.
+    Die Seite muss über <code>localhost</code> oder <code>HTTPS</code> aufgerufen werden.
+  </div>
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="header-inner">
+      <span class="logo">I<sup>2</sup>CDriver</span>
+      <span class="subtitle">Web Serial Control Panel</span>
+      <div class="header-right">
+        <span class="dot disconnected" id="conn-dot"></span>
+        <span id="conn-label">Nicht verbunden</span>
+        <button id="btn-connect" class="btn btn-primary">Verbinden</button>
+        <button id="btn-disconnect" class="btn btn-danger hidden">Trennen</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Main ────────────────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- ── Status ──────────────────────────────────────────────────────── -->
+    <section class="card" id="card-status">
+      <h2>Gerätestatus</h2>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <label>Produkt</label>
+          <span class="val mono" id="s-product">–</span>
+        </div>
+        <div class="stat-item">
+          <label>Seriennummer</label>
+          <span class="val mono" id="s-serial">–</span>
+        </div>
+        <div class="stat-item">
+          <label>Laufzeit</label>
+          <span class="val" id="s-uptime">–</span>
+        </div>
+        <div class="stat-item">
+          <label>USB-Spannung</label>
+          <span class="val" id="s-voltage">–</span>
+        </div>
+        <div class="stat-item">
+          <label>Strom</label>
+          <span class="val" id="s-current">–</span>
+        </div>
+        <div class="stat-item">
+          <label>Temperatur</label>
+          <span class="val" id="s-temp">–</span>
+        </div>
+        <div class="stat-item">
+          <label>SCL</label>
+          <span class="val" id="s-scl">–</span>
+        </div>
+        <div class="stat-item">
+          <label>SDA</label>
+          <span class="val" id="s-sda">–</span>
+        </div>
+        <div class="stat-item">
+          <label>Modus</label>
+          <span class="val mono" id="s-mode">–</span>
+        </div>
+        <div class="stat-item">
+          <label>Geschwindigkeit</label>
+          <span class="val" id="s-speed">–</span>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button id="btn-refresh" class="btn btn-secondary" disabled>Status abrufen</button>
+        <label class="toggle ml-auto">
+          <input type="checkbox" id="auto-refresh">
+          <span class="toggle-track"></span>
+          <span class="toggle-label">Auto (5 s)</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ── Settings ────────────────────────────────────────────────────── -->
+    <section class="card" id="card-settings">
+      <h2>Einstellungen</h2>
+
+      <div class="settings-row">
+        <label>I²C-Geschwindigkeit</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="speed" value="100" checked> 100 kHz
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="speed" value="400"> 400 kHz
+          </label>
+        </div>
+        <button id="btn-set-speed" class="btn btn-secondary" disabled>Setzen</button>
+      </div>
+
+      <div class="settings-row">
+        <label>Pullup-Widerstände</label>
+        <div class="pullup-selects">
+          <div class="pullup-signal">
+            <span class="pullup-signal-label">SDA</span>
+            <select id="pullup-sda" class="pullup-sel" disabled></select>
+          </div>
+          <div class="pullup-signal">
+            <span class="pullup-signal-label">SCL</span>
+            <select id="pullup-scl" class="pullup-sel" disabled></select>
+          </div>
+        </div>
+        <button id="btn-set-pullups" class="btn btn-secondary" disabled>Setzen</button>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-bus-reset" class="btn btn-warning" disabled>Bus-Reset</button>
+      </div>
+    </section>
+
+    <!-- ── Bus Scan ─────────────────────────────────────────────────────── -->
+    <section class="card" id="card-scan">
+      <div class="scan-header">
+        <h2 style="margin:0">Bus-Scan</h2>
+        <button id="btn-scan" class="btn btn-primary" disabled>Scan starten</button>
+        <div class="scan-legend">
+          <span><span class="legend-dot reserved"></span>Reserviert</span>
+          <span><span class="legend-dot active"></span>Frei</span>
+          <span><span class="legend-dot found"></span>Gefunden</span>
+        </div>
+      </div>
+
+      <div class="scan-table-wrap">
+        <table class="scan-table" id="scan-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>+0</th><th>+1</th><th>+2</th><th>+3</th>
+              <th>+4</th><th>+5</th><th>+6</th><th>+7</th>
+              <th>+8</th><th>+9</th><th>+A</th><th>+B</th>
+              <th>+C</th><th>+D</th><th>+E</th><th>+F</th>
+            </tr>
+          </thead>
+          <tbody id="scan-tbody">
+            <!-- filled by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="scan-summary" id="scan-summary"></div>
+      <div class="device-info" id="device-info-badges"></div>
+    </section>
+
+    <!-- ── Device Explorer ─────────────────────────────────────────────── -->
+    <section class="card" id="card-devices">
+      <h2>Device Explorer</h2>
+
+      <div class="dev-picker-row">
+        <div class="form-group">
+          <label for="dev-select">Baustein</label>
+          <select id="dev-select">
+            <option value="">– Baustein wählen –</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="dev-addr-select">I²C-Adresse</label>
+          <select id="dev-addr-select" disabled></select>
+        </div>
+        <button id="btn-dev-read-all" class="btn btn-primary" disabled>Alle lesen</button>
+      </div>
+
+      <div id="dev-description" class="dev-description hidden"></div>
+
+      <div id="dev-reg-table-wrap" class="dev-reg-table-wrap hidden">
+        <table class="dev-reg-table">
+          <thead>
+            <tr>
+              <th class="poll-col" title="Register für Polling auswählen">
+                <input type="checkbox" id="poll-all-cb" title="Alle lesbaren Register auswählen">
+              </th>
+              <th>Addr</th>
+              <th>Register</th>
+              <th>Zugriff</th>
+              <th>Reset</th>
+              <th>Format</th>
+              <th>Wert</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="dev-reg-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Polling control bar – shown when device is selected -->
+      <div id="dev-poll-bar" class="dev-poll-bar hidden">
+        <span class="poll-bar-label">Poll-Rate</span>
+        <div class="poll-rate-group">
+          <input type="range"  id="poll-slider"   min="1" max="1000" step="1" value="500">
+          <input type="number" id="poll-rate-num" min="1" max="1000" value="500" class="poll-rate-num">
+          <select id="poll-unit">
+            <option value="ms">ms</option>
+            <option value="s">s</option>
+          </select>
+          <span id="poll-rate-label" class="poll-rate-label">→ 500 ms</span>
+        </div>
+        <button id="btn-poll-start" class="btn btn-primary btn-xs" disabled>▶ Starten</button>
+        <button id="btn-poll-stop"  class="btn btn-danger  btn-xs hidden">■ Stoppen</button>
+        <span id="poll-counter" class="poll-counter hidden"></span>
+      </div>
+
+      <!-- Poll chart – shown while polling is active -->
+      <div id="poll-chart-wrap" class="poll-chart-wrap hidden">
+        <canvas id="poll-chart"></canvas>
+      </div>
+
+      <!-- Device scripts – shown when device has scripts defined -->
+      <div id="dev-scripts-bar" class="dev-scripts-bar hidden">
+        <div class="scripts-bar-header">
+          <span class="scripts-bar-label">Skripte</span>
+        </div>
+        <div id="dev-scripts-list" class="dev-scripts-list"></div>
+      </div>
+    </section>
+
+    <!-- ── I²C Operations ───────────────────────────────────────────────── -->
+    <section class="card" id="card-ops">
+      <h2>I²C Operationen</h2>
+
+      <div class="tabs" id="ops-tabs">
+        <button class="tab-btn active" data-tab="tab-regrd">Reg. lesen</button>
+        <button class="tab-btn"        data-tab="tab-regwr">Reg. schreiben</button>
+        <button class="tab-btn"        data-tab="tab-write">Schreiben</button>
+        <button class="tab-btn"        data-tab="tab-read">Lesen</button>
+        <button class="tab-btn"        data-tab="tab-writeread">Schreiben+Lesen</button>
+      </div>
+
+      <!-- Register Read -->
+      <div class="tab-pane active" id="tab-regrd">
+        <div class="form-grid">
+          <label>Geräteadresse</label>
+          <input type="text" id="regrd-dev" class="inp narrow" placeholder="0x48">
+          <label>Registeradresse</label>
+          <input type="text" id="regrd-reg" class="inp narrow" placeholder="0x00">
+          <label>Anzahl Bytes</label>
+          <input type="number" id="regrd-len" class="inp" value="1" min="1" max="255">
+        </div>
+        <div class="flex-row">
+          <button id="btn-regrd" class="btn btn-primary" disabled>Lesen</button>
+        </div>
+        <div class="result-wrap mt-10">
+          <div class="result-label">
+            Ergebnis
+            <button class="btn btn-tiny btn-ghost" onclick="copyResult('regrd-result')">Kopieren</button>
+          </div>
+          <div class="result-hex" id="regrd-result">–</div>
+        </div>
+      </div>
+
+      <!-- Register Write -->
+      <div class="tab-pane" id="tab-regwr">
+        <div class="form-grid">
+          <label>Geräteadresse</label>
+          <input type="text" id="regwr-dev" class="inp narrow" placeholder="0x48">
+          <label>Registeradresse</label>
+          <input type="text" id="regwr-reg" class="inp narrow" placeholder="0x00">
+          <label>Daten (Hex)</label>
+          <input type="text" id="regwr-data" class="inp" placeholder="0x12 0x34  oder  12 34">
+        </div>
+        <div class="flex-row">
+          <button id="btn-regwr" class="btn btn-primary" disabled>Schreiben</button>
+        </div>
+        <div class="result-wrap mt-10">
+          <div class="result-label">Status</div>
+          <div class="result-hex" id="regwr-result">–</div>
+        </div>
+      </div>
+
+      <!-- Plain Write -->
+      <div class="tab-pane" id="tab-write">
+        <div class="form-grid">
+          <label>Geräteadresse</label>
+          <input type="text" id="write-dev" class="inp narrow" placeholder="0x48">
+          <label>Daten (Hex)</label>
+          <input type="text" id="write-data" class="inp" placeholder="0x01 0x02 0x03">
+        </div>
+        <div class="flex-row">
+          <button id="btn-write" class="btn btn-primary" disabled>Senden</button>
+        </div>
+        <div class="result-wrap mt-10">
+          <div class="result-label">Status</div>
+          <div class="result-hex" id="write-result">–</div>
+        </div>
+      </div>
+
+      <!-- Plain Read -->
+      <div class="tab-pane" id="tab-read">
+        <div class="form-grid">
+          <label>Geräteadresse</label>
+          <input type="text" id="read-dev" class="inp narrow" placeholder="0x48">
+          <label>Anzahl Bytes</label>
+          <input type="number" id="read-len" class="inp" value="1" min="1" max="65535">
+        </div>
+        <div class="flex-row">
+          <button id="btn-read" class="btn btn-primary" disabled>Empfangen</button>
+        </div>
+        <div class="result-wrap mt-10">
+          <div class="result-label">
+            Empfangene Daten
+            <button class="btn btn-tiny btn-ghost" onclick="copyResult('read-result')">Kopieren</button>
+          </div>
+          <div class="result-hex" id="read-result">–</div>
+        </div>
+      </div>
+
+      <!-- Write+Read -->
+      <div class="tab-pane" id="tab-writeread">
+        <div class="form-grid">
+          <label>Geräteadresse</label>
+          <input type="text" id="wr-dev"       class="inp narrow" placeholder="0x48">
+          <label>Senden (Hex)</label>
+          <input type="text" id="wr-write-data" class="inp" placeholder="0x00">
+          <label>Empfangen (Bytes)</label>
+          <input type="number" id="wr-read-len" class="inp" value="2" min="1" max="65535">
+        </div>
+        <div class="flex-row">
+          <button id="btn-writeread" class="btn btn-primary" disabled>Ausführen</button>
+        </div>
+        <div class="result-wrap mt-10">
+          <div class="result-label">
+            Ergebnis
+            <button class="btn btn-tiny btn-ghost" onclick="copyResult('wr-result')">Kopieren</button>
+          </div>
+          <div class="result-hex" id="wr-result">–</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Log ──────────────────────────────────────────────────────────── -->
+    <section class="card" id="card-log">
+      <div class="log-header">
+        <h2 style="margin:0">Protokoll</h2>
+        <div class="flex-row">
+          <button id="btn-clear-log" class="btn btn-tiny btn-ghost">Löschen</button>
+        </div>
+      </div>
+      <div class="log-container" id="log"></div>
+    </section>
+
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+{
+  "device": "DS3231",
+  "description": "Extremely Accurate I²C-Integrated RTC/TCXO/Crystal",
+  "i2c_addresses": ["0x68"],
+  "registers": [
+    {
+      "address": "0x00",
+      "name": "Seconds",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Seconds register (BCD, 00–59)",
+      "bits": [
+        { "position": "6:4", "name": "10SEC", "description": "Tens digit of seconds (BCD)." },
+        { "position": "3:0", "name": "SEC",   "description": "Units digit of seconds (BCD)." }
+      ]
+    },
+    {
+      "address": "0x01",
+      "name": "Minutes",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Minutes register (BCD, 00–59)",
+      "bits": [
+        { "position": "6:4", "name": "10MIN", "description": "Tens digit of minutes (BCD)." },
+        { "position": "3:0", "name": "MIN",   "description": "Units digit of minutes (BCD)." }
+      ]
+    },
+    {
+      "address": "0x02",
+      "name": "Hours",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Hours register (BCD, 12h or 24h mode)",
+      "bits": [
+        { "position": "6",   "name": "12/24", "description": "0 = 24-hour mode, 1 = 12-hour mode." },
+        { "position": "5",   "name": "AM/PM", "description": "In 12h mode: 0 = AM, 1 = PM." },
+        { "position": "4",   "name": "10HR",  "description": "Tens digit of hours." },
+        { "position": "3:0", "name": "HR",    "description": "Units digit of hours (BCD)." }
+      ]
+    },
+    {
+      "address": "0x03",
+      "name": "Day",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x01",
+      "description": "Day of week (1–7, user-defined mapping)",
+      "bits": [
+        { "position": "2:0", "name": "DAY", "description": "Day of week (1–7)." }
+      ]
+    },
+    {
+      "address": "0x04",
+      "name": "Date",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x01",
+      "description": "Day of month (BCD, 01–31)",
+      "bits": [
+        { "position": "5:4", "name": "10DATE", "description": "Tens digit of date (BCD)." },
+        { "position": "3:0", "name": "DATE",   "description": "Units digit of date (BCD)." }
+      ]
+    },
+    {
+      "address": "0x05",
+      "name": "Month/Century",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x01",
+      "description": "Month and century flag (BCD, 01–12)",
+      "bits": [
+        { "position": "7",   "name": "Century", "description": "Toggles when years overflow from 99 to 00." },
+        { "position": "4",   "name": "10MON",   "description": "Tens digit of month." },
+        { "position": "3:0", "name": "MON",     "description": "Units digit of month (BCD)." }
+      ]
+    },
+    {
+      "address": "0x06",
+      "name": "Year",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Year (BCD, 00–99)",
+      "bits": [
+        { "position": "7:4", "name": "10YR", "description": "Tens digit of year (BCD)." },
+        { "position": "3:0", "name": "YR",   "description": "Units digit of year (BCD)." }
+      ]
+    },
+    {
+      "address": "0x0E",
+      "name": "Control",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x1C",
+      "description": "Device control register",
+      "bits": [
+        { "position": "7", "name": "EOSC",   "description": "0 = Oscillator enabled (RUN), 1 = Oscillator stopped on battery." },
+        { "position": "6", "name": "BBSQW",  "description": "1 = Enable square-wave/interrupt on VBAT." },
+        { "position": "5", "name": "CONV",   "description": "Write 1 to force a temperature conversion." },
+        { "position": "4", "name": "RS2",    "description": "Square-wave rate select MSB." },
+        { "position": "3", "name": "RS1",    "description": "Square-wave rate select LSB. 00=1Hz, 01=1.024kHz, 10=4.096kHz, 11=8.192kHz." },
+        { "position": "2", "name": "INTCN",  "description": "1 = Interrupt output on alarms, 0 = Square-wave output." },
+        { "position": "1", "name": "A2IE",   "description": "1 = Enable Alarm 2 interrupt." },
+        { "position": "0", "name": "A1IE",   "description": "1 = Enable Alarm 1 interrupt." }
+      ]
+    },
+    {
+      "address": "0x0F",
+      "name": "Status",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x08",
+      "description": "Device status register",
+      "bits": [
+        { "position": "7", "name": "OSF",    "description": "Oscillator stop flag. 1 = Oscillator stopped (time may be invalid). Clear by writing 0." },
+        { "position": "3", "name": "EN32kHz","description": "1 = Enable 32 kHz output pin." },
+        { "position": "2", "name": "BSY",    "description": "1 = Temperature conversion in progress." },
+        { "position": "1", "name": "A2F",    "description": "1 = Alarm 2 flag – clear by writing 0." },
+        { "position": "0", "name": "A1F",    "description": "1 = Alarm 1 flag – clear by writing 0." }
+      ]
+    },
+    {
+      "address": "0x10",
+      "name": "Aging Offset",
+      "access": "R/W",
+      "format": "i8",
+      "reset_value": "0x00",
+      "description": "Signed aging offset added to oscillator capacitance array",
+      "bits": [
+        { "position": "7",   "name": "SIGN", "description": "Sign bit of aging offset (two's complement)." },
+        { "position": "6:0", "name": "DATA", "description": "Aging offset magnitude. Positive values slow the oscillator." }
+      ]
+    },
+    {
+      "address": "0x11",
+      "name": "Temp MSB",
+      "access": "R",
+      "format": "i16be",
+      "reset_value": "0x00",
+      "description": "Temperature MSB+LSB (16-bit big-endian, raw 10-bit value)",
+      "bits": [
+        { "position": "7",   "name": "SIGN",  "description": "Sign bit (two's complement)." },
+        { "position": "6:0", "name": "TEMP",  "description": "Integer part of temperature in °C." }
+      ]
+    },
+    {
+      "address": "0x12",
+      "name": "Temp LSB",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Temperature LSB – fractional part (0.25 °C resolution)",
+      "bits": [
+        { "position": "7:6", "name": "FRAC", "description": "Fractional bits: 00=0.00, 01=0.25, 10=0.50, 11=0.75 °C." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "device": "MCP9808",
+  "description": "High-Accuracy ±0.5°C Temperature Sensor",
+  "i2c_addresses": ["0x18", "0x19", "0x1A", "0x1B", "0x1C", "0x1D", "0x1E", "0x1F"],
+  "registers": [
+    {
+      "address": "0x00",
+      "name": "CONFIG",
+      "access": "R/W",
+      "format": "u16be",
+      "reset_value": "0x0000",
+      "description": "Configuration register (16-bit)",
+      "bits": [
+        { "position": "8",   "name": "HYSTERESIS",  "description": "Temperature hysteresis for alert: 00=0°C, 01=+1.5°C, 10=+3.0°C, 11=+6.0°C." },
+        { "position": "4",   "name": "SHDN",         "description": "1 = Shutdown mode (low power, no conversions)." },
+        { "position": "3",   "name": "CRIT LOCK",    "description": "1 = Lock TCRIT limit register (cleared only by POR)." },
+        { "position": "2",   "name": "WIN LOCK",     "description": "1 = Lock TUPPER/TLOWER registers (cleared only by POR)." },
+        { "position": "1",   "name": "INT CLEAR",    "description": "Write 1 to clear interrupt output (bit auto-clears)." },
+        { "position": "0",   "name": "ALERT STAT",   "description": "1 = Alert output asserted." }
+      ]
+    },
+    {
+      "address": "0x01",
+      "name": "TUPPER",
+      "access": "R/W",
+      "format": "i16be",
+      "reset_value": "0x0000",
+      "description": "Alert upper boundary trip register (16-bit, 0.25°C resolution)",
+      "bits": [
+        { "position": "12:0", "name": "TUPPER", "description": "Upper boundary temperature in 0.25°C steps. Bit 12 = sign." }
+      ]
+    },
+    {
+      "address": "0x02",
+      "name": "TLOWER",
+      "access": "R/W",
+      "format": "i16be",
+      "reset_value": "0x0000",
+      "description": "Alert lower boundary trip register (16-bit, 0.25°C resolution)",
+      "bits": [
+        { "position": "12:0", "name": "TLOWER", "description": "Lower boundary temperature in 0.25°C steps. Bit 12 = sign." }
+      ]
+    },
+    {
+      "address": "0x03",
+      "name": "TCRIT",
+      "access": "R/W",
+      "format": "i16be",
+      "reset_value": "0x0000",
+      "description": "Critical temperature trip register (16-bit, 0.25°C resolution)",
+      "bits": [
+        { "position": "12:0", "name": "TCRIT", "description": "Critical temperature in 0.25°C steps. Bit 12 = sign." }
+      ]
+    },
+    {
+      "address": "0x05",
+      "name": "TA",
+      "access": "R",
+      "format": "i16be",
+      "reset_value": "0x0000",
+      "description": "Ambient temperature register (16-bit, 0.0625°C resolution)",
+      "bits": [
+        { "position": "15",   "name": "TCRIT above",  "description": "1 = TA ≥ TCRIT." },
+        { "position": "14",   "name": "TUPPER above",  "description": "1 = TA > TUPPER." },
+        { "position": "13",   "name": "TLOWER below",  "description": "1 = TA < TLOWER." },
+        { "position": "12",   "name": "SIGN",          "description": "Sign bit. 0 = positive, 1 = negative." },
+        { "position": "11:4", "name": "INT TEMP",      "description": "Integer part of temperature (°C)." },
+        { "position": "3:0",  "name": "FRAC TEMP",     "description": "Fractional part in 0.0625°C steps." }
+      ]
+    },
+    {
+      "address": "0x06",
+      "name": "MANUF_ID",
+      "access": "R",
+      "format": "u16be",
+      "reset_value": "0x0054",
+      "description": "Manufacturer ID – should read 0x0054",
+      "bits": [
+        { "position": "15:0", "name": "MID", "description": "Microchip manufacturer ID = 0x0054." }
+      ]
+    },
+    {
+      "address": "0x07",
+      "name": "DEVICE_ID",
+      "access": "R",
+      "format": "u16be",
+      "reset_value": "0x0400",
+      "description": "Device ID / revision – should read 0x04xx",
+      "bits": [
+        { "position": "15:8", "name": "DEV_ID",  "description": "Device ID = 0x04." },
+        { "position": "7:0",  "name": "DEV_REV", "description": "Device revision." }
+      ]
+    },
+    {
+      "address": "0x08",
+      "name": "RESOLUTION",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x03",
+      "description": "Resolution configuration",
+      "bits": [
+        { "position": "1:0", "name": "RES", "description": "00=+0.5°C (30ms), 01=+0.25°C (65ms), 10=+0.125°C (130ms), 11=+0.0625°C (250ms)." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "device": "BME280",
+  "description": "Humidity, Pressure & Temperature Sensor",
+  "i2c_addresses": ["0x76", "0x77"],
+  "registers": [
+    {
+      "address": "0xD0",
+      "name": "chip_id",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x60",
+      "description": "Chip identification number – should always read 0x60",
+      "bits": [
+        { "position": "7:0", "name": "chip_id", "description": "Fixed device ID. 0x60 = BME280, 0x58 = BMP280." }
+      ]
+    },
+    {
+      "address": "0xE0",
+      "name": "reset",
+      "access": "W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Soft reset – write 0xB6 to trigger",
+      "bits": [
+        { "position": "7:0", "name": "reset", "description": "Write 0xB6 to perform a complete soft reset." }
+      ]
+    },
+    {
+      "address": "0xF2",
+      "name": "ctrl_hum",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Humidity acquisition options (changes only effective after writing ctrl_meas)",
+      "bits": [
+        { "position": "2:0", "name": "osrs_h", "description": "Humidity oversampling: 000=skip, 001=×1, 010=×2, 011=×4, 100=×8, 101+=×16." }
+      ]
+    },
+    {
+      "address": "0xF3",
+      "name": "status",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Device status",
+      "bits": [
+        { "position": "3", "name": "measuring", "description": "1 = device is currently running a measurement." },
+        { "position": "0", "name": "im_update", "description": "1 = NVM data is being copied to registers." }
+      ]
+    },
+    {
+      "address": "0xF4",
+      "name": "ctrl_meas",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Temperature/pressure oversampling and device mode",
+      "bits": [
+        { "position": "7:5", "name": "osrs_t", "description": "Temperature oversampling: 000=skip, 001=×1, 010=×2, 011=×4, 100=×8, 101+=×16." },
+        { "position": "4:2", "name": "osrs_p", "description": "Pressure oversampling: 000=skip, 001=×1, 010=×2, 011=×4, 100=×8, 101+=×16." },
+        { "position": "1:0", "name": "mode", "description": "00=sleep, 01/10=forced, 11=normal." }
+      ]
+    },
+    {
+      "address": "0xF5",
+      "name": "config",
+      "access": "R/W",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Rate, filter and interface options",
+      "bits": [
+        { "position": "7:5", "name": "t_sb", "description": "Standby time in normal mode: 000=0.5ms, 001=62.5ms, 010=125ms, 011=250ms, 100=500ms, 101=1000ms, 110=10ms, 111=20ms." },
+        { "position": "4:2", "name": "filter", "description": "IIR filter coefficient: 000=off, 001=2, 010=4, 011=8, 1xx=16." },
+        { "position": "0",   "name": "spi3w_en", "description": "1 = Enable 3-wire SPI interface." }
+      ]
+    },
+    {
+      "address": "0xF7",
+      "name": "press_msb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x80",
+      "description": "Raw pressure MSB [19:12]",
+      "bits": [
+        { "position": "7:0", "name": "press[19:12]", "description": "Most significant byte of raw 20-bit pressure ADC output." }
+      ]
+    },
+    {
+      "address": "0xF8",
+      "name": "press_lsb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Raw pressure LSB [11:4]",
+      "bits": [
+        { "position": "7:0", "name": "press[11:4]", "description": "Middle byte of raw pressure ADC output." }
+      ]
+    },
+    {
+      "address": "0xF9",
+      "name": "press_xlsb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Raw pressure XLSB [3:0]",
+      "bits": [
+        { "position": "7:4", "name": "press[3:0]", "description": "Least significant nibble of raw pressure ADC output." }
+      ]
+    },
+    {
+      "address": "0xFA",
+      "name": "temp_msb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x80",
+      "description": "Raw temperature MSB [19:12]",
+      "bits": [
+        { "position": "7:0", "name": "temp[19:12]", "description": "Most significant byte of raw 20-bit temperature ADC output." }
+      ]
+    },
+    {
+      "address": "0xFB",
+      "name": "temp_lsb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Raw temperature LSB [11:4]",
+      "bits": [
+        { "position": "7:0", "name": "temp[11:4]", "description": "Middle byte of raw temperature ADC output." }
+      ]
+    },
+    {
+      "address": "0xFC",
+      "name": "temp_xlsb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Raw temperature XLSB [3:0]",
+      "bits": [
+        { "position": "7:4", "name": "temp[3:0]", "description": "Least significant nibble of raw temperature ADC output." }
+      ]
+    },
+    {
+      "address": "0xFD",
+      "name": "hum_msb",
+      "access": "R",
+      "format": "u16be",
+      "reset_value": "0x80",
+      "description": "Raw humidity (16-bit big-endian, reads 0xFD+0xFE)",
+      "bits": [
+        { "position": "7:0", "name": "hum[15:8]", "description": "Most significant byte of raw 16-bit humidity ADC output." }
+      ]
+    },
+    {
+      "address": "0xFE",
+      "name": "hum_lsb",
+      "access": "R",
+      "format": "u8",
+      "reset_value": "0x00",
+      "description": "Raw humidity LSB [7:0]",
+      "bits": [
+        { "position": "7:0", "name": "hum[7:0]", "description": "Least significant byte of raw humidity ADC output." }
+      ]
+    }
+  ]
+}
