@@ -93,7 +93,7 @@ let captureWindowSec = 10;
 let captureLastLines = { scl: 1, sda: 1 };
 
 const BUS_ACTION_BTNS = [
-  'btn-refresh', 'btn-set-speed', 'btn-set-pullups', 'btn-bus-reset',
+  'btn-refresh', 'btn-set-settings', 'btn-bus-reset',
   'btn-scan', 'btn-regrd', 'btn-regwr', 'btn-write', 'btn-read', 'btn-writeread',
 ];
 
@@ -702,6 +702,45 @@ async function withBusy(btnId, fn) {
   }
 }
 
+// ─── Settings persistence (localStorage) ─────────────────────────────────────
+const SETTINGS_KEY = 'i2cdriver-settings';
+
+function saveSettings() {
+  const speed = document.querySelector('input[name="speed"]:checked')?.value ?? '100';
+  const sdaBits = $('pullup-sda').value;
+  const sclBits = $('pullup-scl').value;
+  const autoRefresh = $('auto-refresh').checked;
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ speed, sdaBits, sclBits, autoRefresh }));
+  } catch (_) {}
+}
+
+function loadSettings() {
+  let s;
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    s = JSON.parse(raw);
+  } catch (_) { return; }
+
+  if (s.speed) {
+    const r = document.querySelector(`input[name="speed"][value="${s.speed}"]`);
+    if (r) r.checked = true;
+  }
+  if (s.sdaBits !== undefined) {
+    const sel = $('pullup-sda');
+    if (sel) sel.value = s.sdaBits;
+  }
+  if (s.sclBits !== undefined) {
+    const sel = $('pullup-scl');
+    if (sel) sel.value = s.sclBits;
+  }
+  if (s.autoRefresh !== undefined) {
+    const cb = $('auto-refresh');
+    if (cb) cb.checked = !!s.autoRefresh;
+  }
+}
+
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 document.getElementById('ops-tabs').addEventListener('click', e => {
   const btn = e.target.closest('.tab-btn');
@@ -778,19 +817,16 @@ $('btn-refresh').addEventListener('click', () =>
 $('auto-refresh').addEventListener('change', e => {
   if (e.target.checked && drv.connected) startAutoRefresh();
   else stopAutoRefresh();
+  saveSettings();
 });
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-$('btn-set-speed').addEventListener('click', () =>
-  withBusy('btn-set-speed', async () => {
-    const val = parseInt(document.querySelector('input[name="speed"]:checked').value);
-    await drv.setSpeed(val);
-    log('TX', `Geschwindigkeit gesetzt: ${val} kHz`);
-  })
-);
+$('btn-set-settings').addEventListener('click', () =>
+  withBusy('btn-set-settings', async () => {
+    const speed  = parseInt(document.querySelector('input[name="speed"]:checked').value);
+    await drv.setSpeed(speed);
+    log('TX', `Geschwindigkeit gesetzt: ${speed} kHz`);
 
-$('btn-set-pullups').addEventListener('click', () =>
-  withBusy('btn-set-pullups', async () => {
     const sdaVal = parseInt($('pullup-sda').value);
     const sclVal = parseInt($('pullup-scl').value);
     const mask   = (sclVal << 3) | sdaVal;
@@ -798,6 +834,8 @@ $('btn-set-pullups').addEventListener('click', () =>
     const sdaLabel = PULLUP_OPTIONS.find(o => o.bits === sdaVal)?.label ?? sdaVal;
     const sclLabel = PULLUP_OPTIONS.find(o => o.bits === sclVal)?.label ?? sclVal;
     log('TX', `Pullups → SDA: ${sdaLabel}, SCL: ${sclLabel}  (0b${mask.toString(2).padStart(6, '0')})`);
+
+    saveSettings();
   })
 );
 
@@ -1706,6 +1744,17 @@ function init() {
       o.textContent = opt.label;
       sel.appendChild(o);
     });
+  });
+
+  // Restore persisted settings
+  loadSettings();
+
+  // Save on direct UI interaction (before clicking "Setzen")
+  document.querySelectorAll('input[name="speed"]').forEach(r => {
+    r.addEventListener('change', saveSettings);
+  });
+  ['pullup-sda', 'pullup-scl'].forEach(id => {
+    $(id).addEventListener('change', saveSettings);
   });
 
   // Build scan table
