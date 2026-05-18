@@ -493,14 +493,26 @@ $('btn-regrd').addEventListener('click', () =>
   withBusy('btn-regrd', async () => {
     const dev = parseAddr($('regrd-dev').value);
     const reg = parseInt($('regrd-reg').value.trim(), 16);
+    const regAddrBytes = parseInt($('regrd-reg-width').value, 10) === 2 ? 2 : 1;
     const len = Math.max(1, Math.min(255, parseInt($('regrd-len').value)));
     if (isNaN(reg)) throw new Error('Ungültige Registeradresse');
+    if (regAddrBytes === 1 && (reg < 0 || reg > 0xFF)) {
+      throw new Error('8-Bit Registeradresse muss zwischen 0x00 und 0xFF liegen');
+    }
+    if (regAddrBytes === 2 && (reg < 0 || reg > 0xFFFF)) {
+      throw new Error('16-Bit Registeradresse muss zwischen 0x0000 und 0xFFFF liegen');
+    }
 
     const devHex = '0x' + dev.toString(16).toUpperCase().padStart(2,'0');
-    const regHex = '0x' + reg.toString(16).toUpperCase().padStart(2,'0');
+    const regHex = '0x' + reg.toString(16).toUpperCase().padStart(regAddrBytes * 2,'0');
 
-    log('TX', `REG READ  dev=${devHex} reg=${regHex} n=${len}`);
-    const data = await drv.regRead(dev, reg, len);
+    log('TX', `REG READ  dev=${devHex} reg=${regHex} regBytes=${regAddrBytes} n=${len}`);
+    const data = await drv.regRead(dev, reg, len, regAddrBytes);
+    if (!data) {
+      setResult('regrd-result', '<span class="result-nack">NACK ✗ (Gerät nicht gefunden?)</span>');
+      log('WARN', '← NACK');
+      return;
+    }
     setResult('regrd-result', formatBytes(data));
     const hex = Array.from(data).map(b => '0x' + b.toString(16).padStart(2,'0')).join(' ');
     log('RX', `← ${hex}`);

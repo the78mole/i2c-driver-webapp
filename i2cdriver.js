@@ -361,13 +361,32 @@ export class I2CDriver extends EventTarget {
 
   /**
    * Read n bytes from register `reg` of device `dev`.
-   * Uses the firmware shortcut ('r' command) for n ≤ 255.
+   * Uses the firmware shortcut ('r' command) for 8-bit register addresses and n ≤ 255.
+   * For 16-bit register addresses, uses write-then-read (MSB first).
    */
-  async regRead(dev, reg, n = 1) {
+  async regRead(dev, reg, n = 1, regAddrBytes = 1) {
     return this._enqueue(async () => {
       const count = Math.max(1, Math.min(n, 255));
-      await this._write([0x72, dev & 0x7F, reg & 0xFF, count]); // 'r'
-      return this._read(count);
+      const regWidth = regAddrBytes === 2 ? 2 : 1;
+
+      if (regWidth === 1) {
+        await this._write([0x72, dev & 0x7F, reg & 0xFF, count]); // 'r'
+        return this._read(count);
+      }
+
+      const writeData = new Uint8Array([
+        (reg >> 8) & 0xFF,
+        reg & 0xFF,
+      ]);
+      let ack = await this.start(dev, 0);
+      if (!ack) { await this.stop(); return null; }
+      ack = await this.writeBytes(writeData);
+      if (!ack) { await this.stop(); return null; }
+      ack = await this.start(dev, 1); // repeated START
+      if (!ack) { await this.stop(); return null; }
+      const data = await this.readBytes(count);
+      await this.stop();
+      return data;
     });
   }
 
