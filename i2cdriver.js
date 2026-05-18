@@ -85,6 +85,12 @@ class SerialBuffer {
   /** Discard all buffered bytes. */
   discard() { this._bytes = []; }
 
+  /** Remove and return up to max buffered bytes without waiting. */
+  takeAvailable(max = 256) {
+    const n = Math.max(0, Math.min(max, this._bytes.length));
+    return new Uint8Array(this._bytes.splice(0, n));
+  }
+
   get available() { return this._bytes.length; }
 }
 
@@ -186,8 +192,20 @@ export class I2CDriver extends EventTarget {
     await this._writer.write(data);
   }
 
-  async _read(n)     { return this._buf.read(n); }
+  async _read(n, timeout = 5000) { return this._buf.read(n, timeout); }
   _delay(ms)         { return new Promise(r => setTimeout(r, ms)); }
+
+  async _echo(c) {
+    await this._write([0x65, c]); // 'e', c
+    const r = await this._read(1);
+    if (r[0] !== c) {
+      throw new I2CDriverError(
+        `Echo-Test fehlgeschlagen (erwartet 0x${c.toString(16).padStart(2,'0')},` +
+        ` erhalten 0x${r[0].toString(16).padStart(2,'0')})`
+      );
+    }
+    return r[0];
+  }
 
   _emit(type, detail) {
     this.dispatchEvent(
@@ -215,14 +233,7 @@ export class I2CDriver extends EventTarget {
 
     // Echo test: verify the device is responding correctly
     for (const c of [0x55, 0x00, 0xFF, 0xAA]) {
-      await this._write([0x65, c]); // 'e', c
-      const r = await this._read(1);
-      if (r[0] !== c) {
-        throw new I2CDriverError(
-          `Echo-Test fehlgeschlagen (erwartet 0x${c.toString(16).padStart(2,'0')},` +
-          ` erhalten 0x${r[0].toString(16).padStart(2,'0')})`
-        );
-      }
+      await this._echo(c);
     }
 
     await this.getStatus();
@@ -284,6 +295,56 @@ export class I2CDriver extends EventTarget {
       await this._write([0x75, m]); // 'u'
       this.pullups = m;
     });
+  }
+
+  /** Enter/leave monitor mode as implemented in the original i2cdriver tools. */
+  async setMonitor(enabled) {
+    return this._enqueue(async () => {
+      if (enabled) {
+        await this._write(0x6D); // 'm'
+        await this._delay(100);
+      } else {
+        await this._write(0x20); // ' '
+        await this._delay(100);
+        this._buf.discard();
+        await this._echo(0x40); // '@'
+      }
+    });
+  }
+
+  /** Enter capture mode. Use readCaptureChunk() to consume raw capture bytes. */
+  async captureStart() {
+    return this._enqueue(async () => {
+      await this._write(0x63); // 'c'
+      await this._delay(20);
+      this._buf.discard();
+    });
+  }
+
+  /** Leave capture mode and restore command channel responsiveness. */
+  async captureStop() {
+    return this._enqueue(async () => {
+      this._buf.discard();
+      await this._write(0x63); // 'c'
+      await this._delay(30);
+      this._buf.discard();
+      await this._echo(0x40); // '@'
+    });
+  }
+
+  /**
+   * Read a chunk of raw capture bytes (non-protocol stream from capture mode).
+   * Waits for at least one byte and then drains any already buffered bytes up to maxBytes.
+   */
+  async readCaptureChunk(maxBytes = 256, timeout = 500) {
+    if (maxBytes < 1) return new Uint8Array(0);
+    const first = await this._read(1, timeout);
+    const extra = this._buf.takeAvailable(Math.max(0, maxBytes - 1));
+    if (extra.length === 0) return first;
+    const out = new Uint8Array(first.length + extra.length);
+    out.set(first, 0);
+    out.set(extra, first.length);
+    return out;
   }
 
   // ─── Bus Operations ──────────────────────────────────────────────────────────

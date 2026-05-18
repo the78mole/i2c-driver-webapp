@@ -21,6 +21,7 @@ No installation required – open the app in Chrome or Edge and connect your dev
 | **Bus Scan** | Scans all 112 valid I²C addresses and highlights detected devices with known-device labels |
 | **Write / Read / WriteRead** | Raw I²C operations with hex input and annotated byte output |
 | **Register Read / Write** | Registerzugriff mit optional 16-Bit-Adresse beim Lesen sowie Datenzugriff per Adresse + Wert |
+| **Monitor / Capture** | Monitor-Mode für Hardware-Anzeige und Capture-Mode mit separatem Live-Log des I²C-Busverkehrs |
 | **Script Runner** | Execute multi-line I²C command scripts from a text editor |
 | **Device Explorer** | Register-level explorer for known devices (ADXL345, BME280, DS3231, MCP9808) with per-register polling and a live chart |
 | **Terminal Log** | Color-coded xterm.js log with timestamps for every TX/RX operation |

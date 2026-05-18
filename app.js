@@ -85,6 +85,17 @@ const KNOWN_DEVICES = {
 // ─── State ────────────────────────────────────────────────────────────────────
 const drv = new I2CDriver();
 let autoRefreshTimer = null;
+let monitorModeActive = false;
+let captureModeActive = false;
+let captureLoopPromise = null;
+let captureWaveChart = null;
+let captureWindowSec = 10;
+let captureLastLines = { scl: 1, sda: 1 };
+
+const BUS_ACTION_BTNS = [
+  'btn-refresh', 'btn-set-speed', 'btn-set-pullups', 'btn-bus-reset',
+  'btn-scan', 'btn-regrd', 'btn-regwr', 'btn-write', 'btn-read', 'btn-writeread',
+];
 
 // ─── DOM helpers ──────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -175,6 +186,39 @@ const term = new Terminal({
 const fitAddon = new FitAddon();
 term.loadAddon(fitAddon);
 
+const captureTerm = new Terminal({
+  theme: {
+    background:   '#080813',
+    foreground:   '#dde1f0',
+    black:        '#1a1a38',
+    red:          '#ff4444',
+    green:        '#00e676',
+    yellow:       '#ffab00',
+    blue:         '#00d4ff',
+    magenta:      '#b57bee',
+    cyan:         '#00d4ff',
+    white:        '#dde1f0',
+    brightBlack:  '#555870',
+    brightRed:    '#ff6b6b',
+    brightGreen:  '#69ff9f',
+    brightYellow: '#ffd740',
+    brightBlue:   '#80e9ff',
+    brightMagenta:'#d0b0ff',
+    brightCyan:   '#80e9ff',
+    brightWhite:  '#ffffff',
+  },
+  fontFamily:   '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace',
+  fontSize:     12,
+  lineHeight:   1.35,
+  cursorStyle:  'bar',
+  cursorBlink:  false,
+  convertEol:   true,
+  scrollback:   2000,
+  disableStdin: true,
+});
+const captureFitAddon = new FitAddon();
+captureTerm.loadAddon(captureFitAddon);
+
 // ANSI color helpers
 const A = {
   reset: '\x1b[0m',
@@ -182,6 +226,7 @@ const A = {
   INFO:  '\x1b[38;5;246m',  // medium gray
   TX:    '\x1b[38;5;45m',   // bright cyan
   RX:    '\x1b[38;5;83m',   // bright green
+  CAP:   '\x1b[38;5;111m',  // light blue
   WARN:  '\x1b[38;5;214m',  // orange
   ERROR: '\x1b[38;5;196m',  // bright red
 };
@@ -192,6 +237,303 @@ function log(tag, msg) {
   const col = A[tag] ?? A.INFO;
   // Escape HTML entities that could interfere (xterm gets raw strings)
   term.writeln(`${A.dim}${ts}${A.reset} ${col}[${tag.padEnd(5)}]${A.reset} ${msg}`);
+}
+
+function captureLog(tag, msg) {
+  const now = new Date();
+  const ts  = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+  const col = A[tag] ?? A.INFO;
+  captureTerm.writeln(`${A.dim}${ts}${A.reset} ${col}[${tag.padEnd(5)}]${A.reset} ${msg}`);
+}
+
+function updateModeControls() {
+  const connected = drv.connected;
+  const busUnlocked = connected && !monitorModeActive && !captureModeActive;
+
+  BUS_ACTION_BTNS.forEach(id => {
+    const el = $(id);
+    if (el) el.disabled = !busUnlocked;
+  });
+
+  $('pullup-sda').disabled = !busUnlocked;
+  $('pullup-scl').disabled = !busUnlocked;
+  document.querySelectorAll('input[name="speed"]').forEach(r => r.disabled = !busUnlocked);
+
+  ['btn-dev-read-all', 'btn-poll-start', 'btn-poll-stop'].forEach(id => {
+    const el = $(id);
+    if (el) el.disabled = !busUnlocked;
+  });
+  document.querySelectorAll('.btn-script, .btn-reg-read, .btn-reg-write').forEach(el => {
+    el.disabled = !busUnlocked;
+  });
+
+  const btnScriptRun = $('btn-script-run');
+  if (btnScriptRun) {
+    const hasScript = ($('script-editor')?.value ?? '').trim().length > 0;
+    btnScriptRun.disabled = !busUnlocked || !hasScript;
+  }
+
+  const btnMonitor = $('btn-monitor-toggle');
+  const btnCapture = $('btn-capture-toggle');
+  if (btnMonitor) {
+    btnMonitor.disabled = !connected || captureModeActive;
+    btnMonitor.textContent = monitorModeActive ? 'Monitor stoppen' : 'Monitor starten';
+    btnMonitor.classList.toggle('btn-warning', monitorModeActive);
+    btnMonitor.classList.toggle('btn-secondary', !monitorModeActive);
+  }
+  if (btnCapture) {
+    btnCapture.disabled = !connected || monitorModeActive;
+    btnCapture.textContent = captureModeActive ? 'Capture stoppen' : 'Capture starten';
+    btnCapture.classList.toggle('btn-danger', captureModeActive);
+    btnCapture.classList.toggle('btn-warning', !captureModeActive);
+  }
+
+  const captureState = $('capture-state');
+  if (captureState) {
+    captureState.textContent = captureModeActive
+      ? 'Aktiv: Busverkehr wird erfasst'
+      : (monitorModeActive ? 'Monitor aktiv (Capture aus)' : 'Inaktiv');
+  }
+}
+
+function stopBackgroundReads() {
+  stopAutoRefresh();
+  const btnPollStop = $('btn-poll-stop');
+  if (btnPollStop && !btnPollStop.classList.contains('hidden')) {
+    btnPollStop.click();
+  }
+}
+
+function parseCaptureTokens(bytes) {
+  const tokens = [];
+  if (!parseCaptureTokens.state) {
+    parseCaptureTokens.state = { starting: false, rw: 0, bits: [] };
+  }
+  const st = parseCaptureTokens.state;
+
+  for (const b of bytes) {
+    const nibbles = [(b >> 4) & 0x0F, b & 0x0F];
+    for (const n of nibbles) {
+      if (n === 0) {
+        continue;
+      }
+      if (n === 1) {
+        st.starting = true;
+        st.bits = [];
+        continue;
+      }
+      if (n === 2) {
+        tokens.push({ kind: 'STOP' });
+        st.starting = true;
+        st.bits = [];
+        continue;
+      }
+      if (n >= 8 && n <= 15) {
+        st.bits.push(n & 7);
+        if (st.bits.length === 3) {
+          const b9 = (st.bits[0] << 6) | (st.bits[1] << 3) | st.bits[2];
+          const b8 = b9 >> 1;
+          const ack = (b9 & 1) === 0;
+          if (st.starting) {
+            st.rw = b8 & 1;
+            tokens.push({ kind: 'START', addr: b8 >> 1, rw: st.rw, ack });
+            st.starting = false;
+          } else {
+            tokens.push({ kind: 'BYTE', byte: b8, rw: st.rw, ack });
+          }
+          st.bits = [];
+        }
+      }
+    }
+  }
+  return tokens;
+}
+
+function formatCaptureToken(t) {
+  if (t.kind === 'STOP') return { tag: 'CAP', msg: 'P' };
+  if (t.kind === 'START') {
+    const addrHex = '0x' + t.addr.toString(16).toUpperCase().padStart(2, '0');
+    const dir = t.rw ? 'R' : 'W';
+    return { tag: 'CAP', msg: `S addr=${addrHex} dir=${dir} ${t.ack ? 'ACK' : 'NACK'}` };
+  }
+  const byteHex = '0x' + t.byte.toString(16).toUpperCase().padStart(2, '0');
+  const dir = t.rw ? 'R' : 'W';
+  return { tag: t.rw ? 'RX' : 'TX', msg: `B ${dir} ${byteHex} ${t.ack ? 'ACK' : 'NACK'}` };
+}
+
+function initCaptureWaveChart() {
+  if (captureWaveChart) {
+    captureWaveChart.destroy();
+    captureWaveChart = null;
+  }
+  const canvas = $('capture-wave-chart');
+  if (!canvas) return;
+
+  captureWaveChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'SCL',
+          data: [],
+          borderColor: '#00d6ff',
+          backgroundColor: '#00d6ff22',
+          borderWidth: 2,
+          pointRadius: 0,
+          stepped: true,
+          fill: false,
+        },
+        {
+          label: 'SDA',
+          data: [],
+          borderColor: '#ffd166',
+          backgroundColor: '#ffd16622',
+          borderWidth: 2,
+          pointRadius: 0,
+          stepped: true,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      normalized: true,
+      scales: {
+        x: {
+          type: 'linear',
+          min: 0,
+          max: captureWindowSec,
+          ticks: {
+            color: '#8b98a5',
+            callback: (v) => `${v}s`,
+            maxTicksLimit: 7,
+          },
+          grid: { color: '#253040' },
+          title: { display: true, text: 'Zeitfenster', color: '#8b98a5', font: { size: 11 } },
+        },
+        y: {
+          min: -0.15,
+          max: 1.15,
+          ticks: {
+            color: '#8b98a5',
+            stepSize: 1,
+            callback: (v) => (v === 1 ? 'HIGH' : (v === 0 ? 'LOW' : '')),
+          },
+          grid: { color: '#253040' },
+          title: { display: true, text: 'Pegel', color: '#8b98a5', font: { size: 11 } },
+        },
+      },
+      plugins: {
+        legend: { labels: { color: '#c0cdd6', boxWidth: 12, font: { size: 11 } } },
+        tooltip: { backgroundColor: '#1a2530', titleColor: '#c0cdd6', bodyColor: '#8b98a5' },
+      },
+    },
+  });
+}
+
+function pushCaptureWaveSample(relSec, scl, sda) {
+  if (!captureWaveChart) return;
+  const dsets = captureWaveChart.data.datasets;
+  dsets[0].data.push({ x: relSec, y: scl ? 1 : 0 });
+  dsets[1].data.push({ x: relSec, y: sda ? 1 : 0 });
+
+  // Keep only a little history beyond the visible window to limit growth.
+  const keepFrom = Math.max(0, relSec - (captureWindowSec + 1));
+  for (const ds of dsets) {
+    while (ds.data.length > 0 && ds.data[0].x < keepFrom) ds.data.shift();
+  }
+
+  const xMin = Math.max(0, relSec - captureWindowSec);
+  captureWaveChart.options.scales.x.min = xMin;
+  captureWaveChart.options.scales.x.max = xMin + captureWindowSec;
+  captureWaveChart.update('none');
+}
+
+function resetCaptureWave() {
+  captureLastLines = { scl: 1, sda: 1 };
+  if (!captureWaveChart) return;
+  captureWaveChart.data.datasets.forEach(ds => { ds.data = []; });
+  captureWaveChart.options.scales.x.min = 0;
+  captureWaveChart.options.scales.x.max = captureWindowSec;
+  captureWaveChart.update('none');
+}
+
+function applyCaptureTokenToLines(token) {
+  if (token.kind === 'START') {
+    captureLastLines.sda = 0;
+    captureLastLines.scl = 1;
+    return;
+  }
+  if (token.kind === 'STOP') {
+    captureLastLines.sda = 1;
+    captureLastLines.scl = 1;
+    return;
+  }
+  if (token.kind === 'BYTE') {
+    // Approximation: data bits are clocked with SCL high phase.
+    captureLastLines.scl = 1;
+    captureLastLines.sda = ((token.byte >> 7) & 1) === 1 ? 1 : 0;
+  }
+}
+
+async function runCaptureLoop() {
+  captureLog('INFO', 'Capture-Parser gestartet');
+  const t0 = performance.now();
+  let lastWavePush = 0;
+  while (captureModeActive && drv.connected) {
+    try {
+      const chunk = await drv.readCaptureChunk(256, 600);
+      const tokens = parseCaptureTokens(chunk);
+      for (const t of tokens) {
+        const out = formatCaptureToken(t);
+        captureLog(out.tag, out.msg);
+        applyCaptureTokenToLines(t);
+      }
+      const nowSec = (performance.now() - t0) / 1000;
+      if ((nowSec - lastWavePush) >= 0.05) {
+        pushCaptureWaveSample(nowSec, captureLastLines.scl, captureLastLines.sda);
+        lastWavePush = nowSec;
+      }
+    } catch (e) {
+      if (!captureModeActive || !drv.connected) break;
+      const msg = e?.message ?? '';
+      if (/Timeout/i.test(msg)) continue;
+      captureLog('WARN', `Capture-Lesefehler: ${msg || e}`);
+      break;
+    }
+  }
+  captureLog('INFO', 'Capture-Parser gestoppt');
+}
+
+async function setCaptureMode(enable) {
+  if (enable === captureModeActive) return;
+  if (enable) {
+    if (monitorModeActive) {
+      await drv.setMonitor(false);
+      monitorModeActive = false;
+    }
+    stopBackgroundReads();
+    parseCaptureTokens.state = { starting: false, rw: 0, bits: [] };
+    resetCaptureWave();
+    await drv.captureStart();
+    captureModeActive = true;
+    updateModeControls();
+    captureLog('INFO', 'Capture-Mode aktiviert');
+    captureLoopPromise = runCaptureLoop();
+    return;
+  }
+
+  captureModeActive = false;
+  updateModeControls();
+  await drv.captureStop();
+  if (captureLoopPromise) {
+    await captureLoopPromise;
+    captureLoopPromise = null;
+  }
+  captureLog('INFO', 'Capture-Mode deaktiviert');
 }
 
 // ─── Status display ───────────────────────────────────────────────────────────
@@ -319,20 +661,7 @@ function setConnected(connected) {
 
   $('btn-connect').classList.toggle('hidden', connected);
   $('btn-disconnect').classList.toggle('hidden', !connected);
-
-  // Enable/disable all action buttons
-  const actionBtns = [
-    'btn-refresh', 'btn-set-speed', 'btn-set-pullups', 'btn-bus-reset',
-    'btn-scan', 'btn-regrd', 'btn-regwr', 'btn-write', 'btn-read', 'btn-writeread',
-    // btn-dev-read-all is managed by initDeviceExplorer (only when a device is selected)
-  ];
-  actionBtns.forEach(id => {
-    const el = $(id);
-    if (el) el.disabled = !connected;
-  });
-  $('pullup-sda').disabled = !connected;
-  $('pullup-scl').disabled = !connected;
-  document.querySelectorAll('input[name="speed"]').forEach(r => r.disabled = !connected);
+  updateModeControls();
 }
 
 // ─── Auto-refresh ─────────────────────────────────────────────────────────────
@@ -404,6 +733,13 @@ $('btn-connect').addEventListener('click', async () => {
 
 $('btn-disconnect').addEventListener('click', async () => {
   try {
+    if (captureModeActive) {
+      await setCaptureMode(false);
+    }
+    if (monitorModeActive) {
+      await drv.setMonitor(false);
+      monitorModeActive = false;
+    }
     await drv.disconnect();
   } catch (e) {
     handleError(e, 'Trennen fehlgeschlagen');
@@ -420,6 +756,9 @@ drv.addEventListener('connected', () => {
 
 drv.addEventListener('disconnected', () => {
   stopAutoRefresh();
+  monitorModeActive = false;
+  captureModeActive = false;
+  captureLoopPromise = null;
   setConnected(false);
   log('INFO', 'Verbindung getrennt');
 });
@@ -608,6 +947,51 @@ $('btn-writeread').addEventListener('click', () =>
 
 // ─── Log controls ─────────────────────────────────────────────────────────────
 $('btn-clear-log').addEventListener('click', () => term.clear());
+$('btn-clear-capture').addEventListener('click', () => captureTerm.clear());
+
+$('btn-monitor-toggle').addEventListener('click', async () => {
+  const btn = $('btn-monitor-toggle');
+  if (!btn || btn.disabled) return;
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = oldText + ' …';
+  try {
+    if (captureModeActive) return;
+    const enable = !monitorModeActive;
+    if (enable) {
+      stopBackgroundReads();
+      await drv.setMonitor(true);
+      monitorModeActive = true;
+      log('INFO', 'Monitor-Mode aktiviert');
+    } else {
+      await drv.setMonitor(false);
+      monitorModeActive = false;
+      log('INFO', 'Monitor-Mode deaktiviert');
+    }
+  } catch (e) {
+    handleError(e, 'Monitor-Mode Umschalten fehlgeschlagen');
+  } finally {
+    btn.textContent = oldText;
+    updateModeControls();
+  }
+});
+
+$('btn-capture-toggle').addEventListener('click', async () => {
+  const btn = $('btn-capture-toggle');
+  if (!btn || btn.disabled) return;
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = oldText + ' …';
+  try {
+    if (monitorModeActive && !captureModeActive) return;
+    await setCaptureMode(!captureModeActive);
+  } catch (e) {
+    handleError(e, 'Capture-Mode Umschalten fehlgeschlagen');
+  } finally {
+    btn.textContent = oldText;
+    updateModeControls();
+  }
+});
 
 // ─── Script Editor ────────────────────────────────────────────────────────────
 
@@ -1289,8 +1673,23 @@ function init() {
   // Mount xterm.js terminal into the log container
   term.open($('log'));
   fitAddon.fit();
+  captureTerm.open($('capture-log'));
+  captureFitAddon.fit();
+  initCaptureWaveChart();
   // Re-fit on window resize
-  window.addEventListener('resize', () => fitAddon.fit());
+  window.addEventListener('resize', () => {
+    fitAddon.fit();
+    captureFitAddon.fit();
+    if (captureWaveChart) captureWaveChart.resize();
+  });
+
+  document.querySelectorAll('input[name="capture-window"]').forEach(r => {
+    r.addEventListener('change', () => {
+      if (!r.checked) return;
+      captureWindowSec = parseInt(r.value, 10) === 60 ? 60 : 10;
+      resetCaptureWave();
+    });
+  });
 
   // Check Web Serial support
   if (!I2CDriver.isSupported()) {
@@ -1320,9 +1719,11 @@ function init() {
 
   // Initial UI state
   setConnected(false);
+  updateModeControls();
 
   // Log welcome
   log('INFO', 'I²CDriver Web Control bereit. Gerät verbinden und auf „Verbinden" klicken.');
+  captureLog('INFO', 'Capture-Fenster bereit. Capture-Mode starten, um Busverkehr zu sehen.');
   if (!I2CDriver.isSupported()) {
     log('ERROR', 'Web Serial API nicht verfügbar – bitte Chrome oder Edge (≥89) verwenden.');
   }

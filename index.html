@@ -121,6 +121,8 @@
 
       <div class="card-actions">
         <button id="btn-bus-reset" class="btn btn-warning" disabled>Bus-Reset</button>
+        <button id="btn-monitor-toggle" class="btn btn-secondary" disabled>Monitor starten</button>
+        <button id="btn-capture-toggle" class="btn btn-warning" disabled>Capture starten</button>
       </div>
     </section>
 
@@ -375,6 +377,34 @@
         </div>
       </div>
       <div class="log-container" id="log"></div>
+    </section>
+
+    <!-- ── Capture Log ──────────────────────────────────────────────────── -->
+    <section class="card" id="card-capture">
+      <div class="log-header">
+        <h2 style="margin:0">Capture</h2>
+        <div class="flex-row">
+          <span id="capture-state" class="text-dim">Inaktiv</span>
+          <button id="btn-clear-capture" class="btn btn-tiny btn-ghost">Löschen</button>
+        </div>
+      </div>
+      <div class="log-container" id="capture-log"></div>
+
+      <div class="capture-wave-header">
+        <h3 style="margin:0">SCL/SDA Pegel</h3>
+        <div class="capture-window-group" role="group" aria-label="Capture-Zeitfenster">
+          <span class="capture-window-label">Fenster</span>
+          <label class="radio-label">
+            <input type="radio" name="capture-window" value="10" checked> 10 s
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="capture-window" value="60"> 1 min
+          </label>
+        </div>
+      </div>
+      <div class="capture-wave-wrap">
+        <canvas id="capture-wave-chart"></canvas>
+      </div>
     </section>
 
   </main>

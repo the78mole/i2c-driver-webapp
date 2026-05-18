@@ -162,7 +162,8 @@ main {
     "devices  devices"
     "ops      ops"
     "script   script"
-    "log      log";
+    "log      log"
+    "capture  capture";
   gap: 16px;
 }
 
@@ -192,6 +193,7 @@ main {
 #card-ops      { grid-area: ops; }
 #card-script   { grid-area: script; }
 #card-log      { grid-area: log; }
+#card-capture  { grid-area: capture; }
 
 /* ─── Status grid ─────────────────────────────────────────────────────────── */
 .stat-grid {
@@ -494,6 +496,38 @@ input[type="number"].inp { max-width: 100px; }
   padding: 6px;
 }
 
+.capture-wave-header {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.capture-window-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.capture-window-label {
+  font-size: .78rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.capture-wave-wrap {
+  margin-top: 8px;
+  height: 170px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: #0b1020;
+}
+
 /* ─── Device name badge (scan tooltip) ─────────────────────────────────────── */
 .device-info {
   margin-top: 6px;
@@ -569,7 +603,8 @@ input[type="number"].inp { max-width: 100px; }
       "scan"
       "devices"
       "ops"
-      "log";
+      "log"
+      "capture";
   }
 }
 
